@@ -11,7 +11,21 @@
         initImagePreview();
         initShareButtons();
         initAutoDismiss();
+        initEngagement();
+        initCommentToggles();
+        initGalleryLightbox();
     });
+
+    function csrfToken() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') : '';
+    }
+
+    function appUrl(path) {
+        var m = document.querySelector('meta[name="app-base"]');
+        var base = m ? m.getAttribute('content') : '/';
+        return base.replace(/\/$/, '') + '/' + path.replace(/^\//, '');
+    }
 
     /* ---------------------------------------------------------------------
        Multi-step submit form
@@ -101,12 +115,18 @@
                 var targetSel = input.getAttribute('data-image-preview');
                 var target = document.querySelector(targetSel);
                 if (!target) { return; }
-                var file = input.files && input.files[0];
-                if (!file) { target.innerHTML = ''; return; }
-                if (!/^image\//.test(file.type)) { return; }
-                var url = URL.createObjectURL(file);
-                target.innerHTML = '<img src="' + url + '" alt="Selected image preview" ' +
-                    'style="max-width:100%;border-radius:12px;max-height:260px;object-fit:cover">';
+                target.innerHTML = '';
+                var files = input.files ? Array.prototype.slice.call(input.files) : [];
+                files.forEach(function (file, i) {
+                    if (!/^image\//.test(file.type)) { return; }
+                    var url = URL.createObjectURL(file);
+                    var img = document.createElement('img');
+                    img.src = url;
+                    img.alt = 'Selected image preview';
+                    img.style.cssText = 'height:92px;width:92px;border-radius:10px;object-fit:cover;border:1px solid var(--kl-border)';
+                    if (i === 0 && input.multiple) { img.title = 'Cover'; img.style.outline = '2px solid var(--kl-primary)'; }
+                    target.appendChild(img);
+                });
             });
         });
     }
@@ -121,16 +141,131 @@
             ev.preventDefault();
             var url   = btn.getAttribute('data-share-url') || window.location.href;
             var title = btn.getAttribute('data-share-title') || document.title;
+            var id    = btn.getAttribute('data-share-id');
+            if (id) { recordShare(id); }
             if (navigator.share) {
                 navigator.share({ title: title, url: url }).catch(function () {});
             } else if (navigator.clipboard) {
                 navigator.clipboard.writeText(url).then(function () {
-                    btn.setAttribute('data-copied', '1');
-                    var original = btn.textContent;
+                    var original = btn.innerHTML;
                     btn.textContent = 'Link copied ✓';
-                    setTimeout(function () { btn.textContent = original; }, 1800);
+                    setTimeout(function () { btn.innerHTML = original; }, 1800);
                 });
             }
+        });
+    }
+
+    function recordShare(newsId) {
+        var body = new URLSearchParams();
+        body.set('action', 'share');
+        body.set('news_id', newsId);
+        body.set('channel', 'web');
+        body.set('_csrf', csrfToken());
+        fetch(appUrl('engage.php'), {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+            body: body
+        }).catch(function () {});
+    }
+
+    /* ---------------------------------------------------------------------
+       Like / Save (AJAX)
+       --------------------------------------------------------------------- */
+    function initEngagement() {
+        var wrap = document.querySelector('[data-engage]');
+        if (!wrap) { return; }
+        var newsId = wrap.getAttribute('data-engage');
+
+        function post(action, cb) {
+            var body = new URLSearchParams();
+            body.set('action', action);
+            body.set('news_id', newsId);
+            body.set('_csrf', csrfToken());
+            fetch(appUrl('engage.php'), {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+                body: body
+            }).then(function (r) { return r.json(); }).then(cb).catch(function () {});
+        }
+
+        var likeBtn = wrap.querySelector('[data-like]');
+        if (likeBtn) {
+            likeBtn.addEventListener('click', function () {
+                post('like', function (res) {
+                    if (!res.success) {
+                        if (res.data && res.data.login) { window.location.href = appUrl('login.php'); }
+                        return;
+                    }
+                    var liked = res.data.liked;
+                    likeBtn.classList.toggle('btn-emerald', liked);
+                    likeBtn.classList.toggle('btn-outline-emerald', !liked);
+                    likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
+                    var lbl = likeBtn.querySelector('[data-like-label]');
+                    var cnt = likeBtn.querySelector('[data-like-count]');
+                    if (lbl) { lbl.textContent = liked ? 'Liked' : 'Like'; }
+                    if (cnt) { cnt.textContent = res.data.count; }
+                });
+            });
+        }
+
+        var saveBtn = wrap.querySelector('[data-save]');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function () {
+                post('save', function (res) {
+                    if (!res.success) {
+                        if (res.data && res.data.login) { window.location.href = appUrl('login.php'); }
+                        return;
+                    }
+                    var saved = res.data.saved;
+                    saveBtn.classList.toggle('btn-emerald', saved);
+                    saveBtn.classList.toggle('btn-outline-emerald', !saved);
+                    saveBtn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+                    var lbl = saveBtn.querySelector('[data-save-label]');
+                    if (lbl) { lbl.textContent = saved ? 'Saved' : 'Save'; }
+                });
+            });
+        }
+    }
+
+    /* ---------------------------------------------------------------------
+       Comment reply / report toggles
+       --------------------------------------------------------------------- */
+    function initCommentToggles() {
+        document.addEventListener('click', function (ev) {
+            var reply = ev.target.closest('[data-reply-toggle]');
+            var report = ev.target.closest('[data-report-toggle]');
+            if (reply) {
+                var f = document.querySelector('[data-reply-form="' + reply.getAttribute('data-reply-toggle') + '"]');
+                if (f) { f.classList.toggle('d-none'); var t = f.querySelector('textarea'); if (t) { t.focus(); } }
+            } else if (report) {
+                var rf = document.querySelector('[data-report-form="' + report.getAttribute('data-report-toggle') + '"]');
+                if (rf) { rf.classList.toggle('d-none'); }
+            }
+        });
+    }
+
+    /* ---------------------------------------------------------------------
+       Simple gallery lightbox (uses a Bootstrap modal if available)
+       --------------------------------------------------------------------- */
+    function initGalleryLightbox() {
+        var links = document.querySelectorAll('[data-gallery]');
+        if (!links.length) { return; }
+
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;' +
+            'align-items:center;justify-content:center;z-index:2000;cursor:zoom-out;padding:1rem';
+        var big = document.createElement('img');
+        big.style.cssText = 'max-width:96%;max-height:92%;border-radius:8px';
+        overlay.appendChild(big);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', function () { overlay.style.display = 'none'; });
+
+        Array.prototype.forEach.call(links, function (a) {
+            a.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                big.src = a.getAttribute('href');
+                overlay.style.display = 'flex';
+            });
         });
     }
 

@@ -56,19 +56,15 @@ if (is_post()) {
     if ($summary !== '') $v->max('summary', 500, 'Short summary');
     if ($srcUrl !== '')  $v->url('source_url', 'Source URL')->max('source_url', 500);
 
-    $coverData = null;
-    if (!empty($_FILES['cover']['name'])) {
-        $res = upload_image($_FILES['cover'], 'news', ['thumb_width' => 640]);
-        if (!$res['ok']) $v->add('cover', $res['error'] ?? 'The cover image could not be uploaded.');
-        else $coverData = $res['data'];
-    }
+    $deleteMedia = array_map('intval', (array) ($_POST['delete_media'] ?? []));
 
     if ($v->fails()) {
         $errors = $v->errors();
     } else {
+        $mediaErrors = [];
         try {
             $resubmit = in_array($news['status'], ['needs_information', 'draft'], true);
-            db_transaction(function () use ($id, $title, $catId, $locId, $lang, $summary, $body, $srcLabel, $srcUrl, $coverData, $firstSource, $resubmit) {
+            db_transaction(function () use ($id, $title, $catId, $locId, $lang, $summary, $body, $srcLabel, $srcUrl, $firstSource, $resubmit, $deleteMedia, &$mediaErrors) {
                 $update = [
                     'title'         => $title,
                     'category_id'   => $catId,
@@ -83,16 +79,30 @@ if (is_post()) {
                 }
                 db_update('news', $update, ['id' => $id]);
 
-                // Cover replacement.
-                if ($coverData) {
-                    $mediaId = db_insert('news_media', [
-                        'news_id' => $id, 'type' => 'image',
-                        'path' => $coverData['path'], 'thumb_path' => $coverData['thumb_path'],
-                        'mime' => $coverData['mime'], 'size_bytes' => $coverData['size'],
-                        'width' => $coverData['width'], 'height' => $coverData['height'],
-                        'original_name' => $coverData['original_name'], 'sort_order' => 0,
-                    ]);
-                    db_update('news', ['cover_media_id' => $mediaId], ['id' => $id]);
+                // Remove selected existing media (only media that belong to this item).
+                foreach ($deleteMedia as $mid) {
+                    $owned = fetch('SELECT id FROM news_media WHERE id = ? AND news_id = ? LIMIT 1', [$mid, $id]);
+                    if ($owned) {
+                        // Clear cover pointer first to satisfy the FK, then delete.
+                        db_run('UPDATE news SET cover_media_id = NULL WHERE cover_media_id = ? AND id = ?', [$mid, $id]);
+                        db_run('DELETE FROM news_media WHERE id = ?', [$mid]);
+                    }
+                }
+
+                // Add any newly uploaded photos / video.
+                $m = store_news_media($id, [
+                    'photos' => $_FILES['photos'] ?? null,
+                    'video'  => $_FILES['video'] ?? null,
+                ]);
+                $mediaErrors = $m['errors'];
+
+                // Ensure a cover is set if images remain but the pointer is empty.
+                $hasCover = (int) fetch_column('SELECT cover_media_id IS NOT NULL FROM news WHERE id = ?', [$id], 0);
+                if (!$hasCover) {
+                    $firstImg = fetch("SELECT id FROM news_media WHERE news_id = ? AND type = 'image' ORDER BY sort_order, id LIMIT 1", [$id]);
+                    if ($firstImg) {
+                        db_update('news', ['cover_media_id' => (int) $firstImg['id']], ['id' => $id]);
+                    }
                 }
 
                 // Source upsert (single source in Phase 1/2).
@@ -124,6 +134,9 @@ if (is_post()) {
                 flash_set('success', 'Your updated story has been resubmitted for verification.');
             } else {
                 flash_set('success', 'Your submission has been updated.');
+            }
+            foreach ($mediaErrors as $me) {
+                flash_set('warning', 'Media note: ' . $me);
             }
             redirect('reporter/index.php');
         } catch (Throwable $ex) {
@@ -213,15 +226,35 @@ require KL_INCLUDES . '/partials/head.php';
             <?php if (isset($errors['source_url'])): ?><div class="invalid-feedback"><?= e($errors['source_url']) ?></div><?php endif; ?>
           </div>
         </div>
+        <?php $existingMedia = news_media_for($id); ?>
+        <?php if ($existingMedia): ?>
+          <div class="mb-3 mt-3">
+            <label class="form-label">Current media <span class="text-muted-2 fw-normal">(tick to remove)</span></label>
+            <div class="d-flex flex-wrap gap-3">
+              <?php foreach ($existingMedia as $m): $isCover = (int) $m['id'] === (int) $news['cover_media_id']; ?>
+                <label class="text-center" style="cursor:pointer">
+                  <?php if ($m['type'] === 'video'): ?>
+                    <span class="d-grid" style="width:92px;height:92px;place-items:center;background:var(--kl-primary-light);border-radius:10px;border:1px solid var(--kl-border)">🎬</span>
+                  <?php else: ?>
+                    <img src="<?= e_attr(upload_url($m['thumb_path'] ?: $m['path'])) ?>" alt="media" style="width:92px;height:92px;object-fit:cover;border-radius:10px;border:1px solid var(--kl-border)">
+                  <?php endif; ?>
+                  <div class="small mt-1">
+                    <input type="checkbox" name="delete_media[]" value="<?= (int) $m['id'] ?>"> remove
+                    <?php if ($isCover): ?><span class="kl-badge kl-badge--category">cover</span><?php endif; ?>
+                  </div>
+                </label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        <?php endif; ?>
         <div class="mb-3 mt-3">
-          <label class="form-label" for="cover">Replace cover photo <span class="text-muted-2 fw-normal">(optional)</span></label>
-          <input class="form-control <?= isset($errors['cover'])?'is-invalid':'' ?>" type="file" id="cover" name="cover" accept="image/jpeg,image/png,image/webp" data-image-preview="#cover-preview">
-          <?php if (isset($errors['cover'])): ?><div class="invalid-feedback d-block"><?= e($errors['cover']) ?></div><?php endif; ?>
-          <?php if (!empty($news['cover_media_id'])): $cm = fetch('SELECT thumb_path, path FROM news_media WHERE id = ?', [(int)$news['cover_media_id']]); if ($cm): ?>
-            <div class="form-text">Current cover is kept unless you choose a new one.</div>
-            <img src="<?= e_attr(upload_url($cm['thumb_path'] ?: $cm['path'])) ?>" alt="current cover" class="rounded mt-2" style="max-height:140px">
-          <?php endif; endif; ?>
-          <div id="cover-preview" class="mt-2"></div>
+          <label class="form-label" for="photos">Add photos <span class="text-muted-2 fw-normal">(optional, up to 8 total)</span></label>
+          <input class="form-control" type="file" id="photos" name="photos[]" multiple accept="image/jpeg,image/png,image/webp" data-image-preview="#photo-preview">
+          <div id="photo-preview" class="mt-2 d-flex flex-wrap gap-2"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="video">Add / replace video <span class="text-muted-2 fw-normal">(optional)</span></label>
+          <input class="form-control" type="file" id="video" name="video" accept="video/mp4,video/webm">
         </div>
 
         <button type="submit" class="btn btn-emerald">

@@ -314,4 +314,22 @@ require __DIR__ . '/includes/partials/head.php';
     <?php render_empty_state('No submissions yet', 'Share your first local story — it only takes a minute.', '📝'); ?>
   <?php endif; ?>
 </section>
+
+<!-- Saved stories -->
+<?php
+$saved = fetch_all(
+    news_select_base() . ' JOIN saved_news sv ON sv.news_id = n.id
+      WHERE sv.user_id = ? AND n.status = \'published\'
+      ORDER BY sv.created_at DESC LIMIT 6',
+    [(int) $user['id']]
+);
+?>
+<section class="kl-section" id="saved">
+  <div class="kl-section__head"><h2 class="kl-section__title">🔖 Saved stories</h2></div>
+  <?php if ($saved): ?>
+    <div class="row g-3"><?php foreach ($saved as $n) { render_news_card($n); } ?></div>
+  <?php else: ?>
+    <?php render_empty_state('Nothing saved yet', 'Tap “Save” on any story to keep it here for later.', '🔖'); ?>
+  <?php endif; ?>
+</section>
 <?php require __DIR__ . '/includes/partials/footer.php'; ?>

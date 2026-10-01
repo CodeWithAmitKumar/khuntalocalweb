@@ -69,10 +69,11 @@ $nav = function (string $key, string $href, string $label) use ($activeNav): str
               <?php endif; ?>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-              <?php if ($unread > 0): ?>
-                <li><span class="dropdown-item-text small text-emerald">🔔 <?= e((string) $unread) ?> new update<?= $unread === 1 ? '' : 's' ?></span></li>
-                <li><hr class="dropdown-divider"></li>
-              <?php endif; ?>
+              <li><a class="dropdown-item d-flex justify-content-between align-items-center" href="<?= e_attr(base_url('notifications.php')) ?>">
+                Notifications
+                <?php if ($unread > 0): ?><span class="badge rounded-pill text-bg-danger"><?= e(format_count($unread)) ?></span><?php endif; ?>
+              </a></li>
+              <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item" href="<?= e_attr(base_url('reporter/index.php')) ?>">Reporter dashboard</a></li>
               <li><a class="dropdown-item" href="<?= e_attr(base_url('submit-news.php')) ?>">Submit news</a></li>
               <li><a class="dropdown-item" href="<?= e_attr(base_url('profile.php')) ?>">My profile</a></li>

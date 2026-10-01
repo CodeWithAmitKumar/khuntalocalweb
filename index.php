@@ -145,13 +145,20 @@ require __DIR__ . '/includes/partials/head.php';
   <?php endif; ?>
 </section>
 
-<!-- Video news (Phase 3) -->
+<!-- Video news -->
+<?php $videoItems = news_fetch_published(['has_video' => true], 'latest', 6); ?>
 <section class="kl-section">
   <div class="kl-section__head">
     <h2 class="kl-section__title">🎬 Video news</h2>
-    <span class="kl-soon">Coming soon</span>
+    <?php if ($videoItems): ?><a href="<?= e_attr(base_url('latest.php?media=video')) ?>" class="btn btn-soft btn-sm">View all</a><?php endif; ?>
   </div>
-  <?php render_empty_state('Video news is on the way', 'Video submissions and playback arrive in a later update (Phase 3).', '🎬'); ?>
+  <?php if ($videoItems): ?>
+    <div class="row g-3">
+      <?php foreach (array_slice($videoItems, 0, 3) as $n) { render_news_card($n); } ?>
+    </div>
+  <?php else: ?>
+    <?php render_empty_state('No video stories yet', 'Reporters can attach a video when submitting a story.', '🎬'); ?>
+  <?php endif; ?>
 </section>
 
 <?php require __DIR__ . '/includes/partials/footer.php'; ?>

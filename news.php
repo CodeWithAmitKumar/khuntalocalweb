@@ -24,12 +24,25 @@ if ($isPublished) {
     news_record_view((int) $news['id']);
 }
 
-$sources = news_sources_for((int) $news['id']);
+$newsId  = (int) $news['id'];
+$sources = news_sources_for($newsId);
 $related = news_fetch_published(
-    ['category_id' => (int) $news['category_id'], 'exclude_id' => (int) $news['id']],
+    ['category_id' => (int) $news['category_id'], 'exclude_id' => $newsId],
     'latest',
     3
 );
+
+// Media (gallery = images other than the cover) + video.
+$images    = news_media_for($newsId, 'image');
+$videos    = news_media_for($newsId, 'video');
+$coverId   = (int) ($news['cover_media_id'] ?? 0);
+$gallery   = array_values(array_filter($images, static fn($m) => (int) $m['id'] !== $coverId));
+
+// Comments + viewer engagement state.
+$comments   = $isPublished ? comments_for_news($newsId) : [];
+$uid        = auth_user_id();
+$viewerLiked = $uid ? user_has_liked($newsId, $uid) : false;
+$viewerSaved = $uid ? user_has_saved($newsId, $uid) : false;
 
 $meta = news_meta($news);
 if (!$isPublished) {
@@ -115,6 +128,37 @@ $breakingActive = !empty($news['is_breaking'])
       ?>
     </div>
 
+    <!-- Video -->
+    <?php if ($videos): ?>
+      <section class="mb-4">
+        <?php foreach ($videos as $vid): ?>
+          <video class="w-100 rounded" style="max-height:460px;background:#000" controls preload="metadata">
+            <source src="<?= e_attr(upload_url((string) $vid['path'])) ?>" type="<?= e_attr((string) ($vid['mime'] ?: 'video/mp4')) ?>">
+            Your browser does not support the video tag.
+          </video>
+        <?php endforeach; ?>
+      </section>
+    <?php endif; ?>
+
+    <!-- Photo gallery -->
+    <?php if ($gallery): ?>
+      <section class="mb-4">
+        <h2 class="kl-section__title h5 mb-2">Photos</h2>
+        <div class="row g-2">
+          <?php foreach ($gallery as $i => $g): ?>
+            <div class="col-6 col-md-4">
+              <a href="<?= e_attr(upload_url((string) $g['path'])) ?>" data-gallery="story" class="d-block"
+                 style="aspect-ratio:1/1;overflow:hidden;border-radius:10px">
+                <img src="<?= e_attr(upload_url((string) ($g['thumb_path'] ?: $g['path']))) ?>"
+                     alt="<?= e_attr('Photo ' . ($i + 1)) ?>" loading="lazy"
+                     style="width:100%;height:100%;object-fit:cover">
+              </a>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    <?php endif; ?>
+
     <!-- Verification label -->
     <?php if ($isPublished): ?>
       <div class="kl-verify-note mb-4">
@@ -149,19 +193,56 @@ $breakingActive = !empty($news['is_breaking'])
     </section>
 
     <!-- Actions -->
-    <div class="d-flex flex-wrap gap-2 mb-4">
-      <button class="btn btn-emerald btn-sm" data-share
+    <?php if ($isPublished): ?>
+    <div class="d-flex flex-wrap gap-2 mb-4" data-engage="<?= (int) $newsId ?>">
+      <button class="btn btn-sm <?= $viewerLiked ? 'btn-emerald' : 'btn-outline-emerald' ?>" data-like aria-pressed="<?= $viewerLiked ? 'true' : 'false' ?>">
+        <span class="ic">♥</span> <span data-like-label><?= $viewerLiked ? 'Liked' : 'Like' ?></span>
+        <span class="badge text-bg-light ms-1" data-like-count><?= e(format_count((int) $news['like_count'])) ?></span>
+      </button>
+      <button class="btn btn-sm <?= $viewerSaved ? 'btn-emerald' : 'btn-outline-emerald' ?>" data-save aria-pressed="<?= $viewerSaved ? 'true' : 'false' ?>">
+        <span class="ic">🔖</span> <span data-save-label><?= $viewerSaved ? 'Saved' : 'Save' ?></span>
+      </button>
+      <button class="btn btn-outline-emerald btn-sm" data-share
               data-share-title="<?= e_attr($news['title']) ?>"
-              data-share-url="<?= e_attr(news_url((string) $news['slug'])) ?>">🔗 Share</button>
-      <button class="btn btn-outline-emerald btn-sm" disabled title="Coming in a later update">♡ Save <span class="kl-soon ms-1">soon</span></button>
-      <button class="btn btn-outline-emerald btn-sm" disabled title="Coming in a later update">⚑ Report <span class="kl-soon ms-1">soon</span></button>
+              data-share-url="<?= e_attr(news_url((string) $news['slug'])) ?>"
+              data-share-id="<?= (int) $newsId ?>">🔗 Share</button>
+      <?php if (is_logged_in()): ?>
+        <button class="btn btn-outline-emerald btn-sm ms-auto text-danger" data-bs-toggle="modal" data-bs-target="#reportModal">⚑ Report</button>
+      <?php else: ?>
+        <a class="btn btn-outline-emerald btn-sm ms-auto text-danger" href="<?= e_attr(base_url('login.php')) ?>">⚑ Report</a>
+      <?php endif; ?>
     </div>
 
-    <!-- Comments (Phase 3) -->
-    <section class="mb-4">
-      <h2 class="kl-section__title h5 mb-2">Comments</h2>
-      <?php render_empty_state('Comments are coming soon', 'Readers will be able to discuss stories in a later update (Phase 3).', '💬'); ?>
+    <!-- Comments -->
+    <section class="mb-4" id="comments">
+      <h2 class="kl-section__title h5 mb-3">Comments <span class="text-muted-2">(<?= e(format_count((int) $news['comment_count'])) ?>)</span></h2>
+
+      <?php if (is_logged_in()): ?>
+        <form method="post" action="<?= e_attr(base_url('comment.php')) ?>" class="kl-card p-3 mb-3" style="box-shadow:none">
+          <?= csrf_field() ?>
+          <input type="hidden" name="news_id" value="<?= (int) $newsId ?>">
+          <input type="hidden" name="action" value="add">
+          <textarea class="form-control mb-2" name="body" rows="3" required maxlength="5000" placeholder="Share your thoughts respectfully…"></textarea>
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted-2"><?= setting_bool('comment_moderation', true) ? 'Comments are reviewed before appearing.' : 'Be kind and factual.' ?></small>
+            <button class="btn btn-emerald btn-sm" type="submit">Post comment</button>
+          </div>
+        </form>
+      <?php else: ?>
+        <div class="kl-card p-3 mb-3 text-center" style="box-shadow:none">
+          <a class="btn btn-emerald btn-sm" href="<?= e_attr(base_url('login.php')) ?>">Log in to comment</a>
+        </div>
+      <?php endif; ?>
+
+      <?php if ($comments): ?>
+        <div class="d-grid gap-3">
+          <?php foreach ($comments as $c) { render_comment($c, $newsId); } ?>
+        </div>
+      <?php else: ?>
+        <?php render_empty_state('No comments yet', 'Be the first to share your thoughts.', '💬'); ?>
+      <?php endif; ?>
     </section>
+    <?php endif; /* isPublished actions+comments */ ?>
 
     <!-- Related -->
     <?php if ($related): ?>
@@ -175,4 +256,46 @@ $breakingActive = !empty($news['is_breaking'])
 
   </div>
 </article>
+
+<?php if ($isPublished && is_logged_in()): ?>
+<!-- Report modal -->
+<div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:var(--kl-radius)">
+      <form method="post" action="<?= e_attr(base_url('report.php')) ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="news_id" value="<?= (int) $newsId ?>">
+        <div class="modal-header">
+          <h5 class="modal-title">Report this story</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted-2 small">Tell us what's wrong. Our moderators review every report.</p>
+          <div class="mb-3">
+            <label class="form-label" for="report_reason">Reason</label>
+            <select class="form-select" id="report_reason" name="reason" required>
+              <option value="false_information">False information</option>
+              <option value="duplicate">Duplicate</option>
+              <option value="offensive">Offensive content</option>
+              <option value="copyright">Copyright issue</option>
+              <option value="spam">Spam</option>
+              <option value="wrong_information">Wrong information</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label" for="report_note">Details <span class="text-muted-2 fw-normal">(optional)</span></label>
+            <textarea class="form-control" id="report_note" name="note" rows="3" maxlength="1000"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-emerald" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Submit report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php require __DIR__ . '/includes/partials/footer.php'; ?>

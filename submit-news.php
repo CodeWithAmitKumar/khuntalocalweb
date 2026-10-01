@@ -48,23 +48,13 @@ if (is_post()) {
     if ($srcUrl !== '') { $v->url('source_url', 'Source URL')->max('source_url', 500); }
     if ($srcLabel !== '') { $v->max('source_label', 200, 'Source label'); }
 
-    // Validate the optional cover image up front (before writing anything).
-    $coverData = null;
-    if (!empty($_FILES['cover']['name'])) {
-        $res = upload_image($_FILES['cover'], 'news', ['thumb_width' => 640]);
-        if (!$res['ok']) {
-            $v->add('cover', $res['error'] ?? 'The cover image could not be uploaded.');
-        } else {
-            $coverData = $res['data'];
-        }
-    }
-
     if ($v->fails()) {
         $errors = $v->errors();
         old_flash($_POST);
     } else {
+        $mediaErrors = [];
         try {
-            $newsId = db_transaction(function () use ($user, $title, $catId, $locId, $lang, $summary, $body, $srcLabel, $srcUrl, $coverData): int {
+            $newsId = db_transaction(function () use ($user, $title, $catId, $locId, $lang, $summary, $body, $srcLabel, $srcUrl, &$mediaErrors): int {
                 $slug = unique_slug($title, static function (string $s): bool {
                     return (bool) fetch_column('SELECT 1 FROM news WHERE slug = ? LIMIT 1', [$s]);
                 }, 200);
@@ -85,22 +75,12 @@ if (is_post()) {
                     'submitted_at'  => date('Y-m-d H:i:s'),
                 ]);
 
-                // Optional cover image.
-                if ($coverData) {
-                    $mediaId = db_insert('news_media', [
-                        'news_id'       => $newsId,
-                        'type'          => 'image',
-                        'path'          => $coverData['path'],
-                        'thumb_path'    => $coverData['thumb_path'],
-                        'mime'          => $coverData['mime'],
-                        'size_bytes'    => $coverData['size'],
-                        'width'         => $coverData['width'],
-                        'height'        => $coverData['height'],
-                        'original_name' => $coverData['original_name'],
-                        'sort_order'    => 0,
-                    ]);
-                    db_update('news', ['cover_media_id' => $mediaId], ['id' => $newsId]);
-                }
+                // Optional media: photos (first becomes cover) + a video.
+                $m = store_news_media($newsId, [
+                    'photos' => $_FILES['photos'] ?? null,
+                    'video'  => $_FILES['video'] ?? null,
+                ]);
+                $mediaErrors = $m['errors'];
 
                 // Optional source/reference.
                 if ($srcLabel !== '' || $srcUrl !== '') {
@@ -135,6 +115,9 @@ if (is_post()) {
                 $title, ['news_id' => $newsId]);
 
             flash_set('success', 'Thank you! Your story has been submitted and is awaiting verification.');
+            foreach ($mediaErrors as $me) {
+                flash_set('warning', 'Media note: ' . $me);
+            }
             redirect('profile.php#submissions');
         } catch (Throwable $ex) {
             error_log('news submission failed: ' . $ex->getMessage());
@@ -267,17 +250,16 @@ require __DIR__ . '/includes/partials/head.php';
         <section class="kl-step-panel">
           <h2 class="h5 mb-3">Step 3 — Media</h2>
           <div class="mb-3">
-            <label class="form-label" for="cover">Cover photo <span class="text-muted-2 fw-normal">(optional)</span></label>
-            <input class="form-control <?= isset($errors['cover']) ? 'is-invalid' : '' ?>"
-                   type="file" id="cover" name="cover" accept="image/jpeg,image/png,image/webp"
-                   data-image-preview="#cover-preview">
-            <?php if (isset($errors['cover'])): ?><div class="invalid-feedback d-block"><?= e($errors['cover']) ?></div><?php endif; ?>
-            <div class="form-text">JPG, PNG or WEBP, up to <?= e((string) round(setting_int('max_image_size', 5242880) / 1048576, 1)) ?> MB.</div>
-            <div id="cover-preview" class="mt-3"></div>
+            <label class="form-label" for="photos">Photos <span class="text-muted-2 fw-normal">(optional, up to 8 — first is the cover)</span></label>
+            <input class="form-control" type="file" id="photos" name="photos[]" multiple
+                   accept="image/jpeg,image/png,image/webp" data-image-preview="#photo-preview">
+            <div class="form-text">JPG, PNG or WEBP, up to <?= e((string) round(setting_int('max_image_size', 5242880) / 1048576, 1)) ?> MB each.</div>
+            <div id="photo-preview" class="mt-3 d-flex flex-wrap gap-2"></div>
           </div>
-          <div class="alert alert-info d-flex align-items-center gap-2">
-            <span>🎬</span>
-            <div>Multiple photos and video uploads are coming in a later update. <span class="kl-soon">Phase 3</span></div>
+          <div class="mb-3">
+            <label class="form-label" for="video">Video <span class="text-muted-2 fw-normal">(optional)</span></label>
+            <input class="form-control" type="file" id="video" name="video" accept="video/mp4,video/webm">
+            <div class="form-text">MP4 or WEBM, up to <?= e((string) round(setting_int('max_video_size', 52428800) / 1048576, 1)) ?> MB.</div>
           </div>
           <div class="kl-step-nav justify-content-between mt-4">
             <button type="button" class="btn btn-outline-emerald" data-step-prev>Back</button>

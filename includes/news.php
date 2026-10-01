@@ -113,6 +113,20 @@ if (!function_exists('news_published_where')) {
         if (!empty($filters['is_featured'])) {
             $where[] = 'n.is_featured = 1';
         }
+        if (!empty($filters['has_video'])) {
+            $where[] = "EXISTS (SELECT 1 FROM news_media m WHERE m.news_id = n.id AND m.type = 'video')";
+        }
+        if (!empty($filters['has_gallery'])) {
+            $where[] = "EXISTS (SELECT 1 FROM news_media m WHERE m.news_id = n.id AND m.type = 'image')";
+        }
+        if (!empty($filters['date_from'])) {
+            $where[]  = 'n.published_at >= ?';
+            $params[] = (string) $filters['date_from'] . ' 00:00:00';
+        }
+        if (!empty($filters['date_to'])) {
+            $where[]  = 'n.published_at <= ?';
+            $params[] = (string) $filters['date_to'] . ' 23:59:59';
+        }
         if (!empty($filters['trending_days'])) {
             $where[]  = 'n.published_at > (NOW() - INTERVAL ? DAY)';
             $params[] = (int) $filters['trending_days'];
@@ -195,6 +209,23 @@ if (!function_exists('news_sources_for')) {
     function news_sources_for(int $newsId): array
     {
         return fetch_all('SELECT * FROM news_sources WHERE news_id = ? ORDER BY id', [$newsId]);
+    }
+}
+
+if (!function_exists('news_media_for')) {
+    /**
+     * Media for an article, optionally filtered by type ('image'|'video').
+     * @return array<int,array<string,mixed>>
+     */
+    function news_media_for(int $newsId, ?string $type = null): array
+    {
+        if ($type !== null) {
+            return fetch_all(
+                'SELECT * FROM news_media WHERE news_id = ? AND type = ? ORDER BY sort_order, id',
+                [$newsId, $type]
+            );
+        }
+        return fetch_all('SELECT * FROM news_media WHERE news_id = ? ORDER BY sort_order, id', [$newsId]);
     }
 }
 

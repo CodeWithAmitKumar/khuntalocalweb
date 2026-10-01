@@ -25,6 +25,8 @@ $favicon = 'data:image/svg+xml,'
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#1a7f5a">
+    <meta name="csrf-token" content="<?= e_attr(csrf_token()) ?>">
+    <meta name="app-base" content="<?= e_attr(rtrim(base_url(), '/') . '/') ?>">
     <?php render_meta_tags($meta); ?>
     <link rel="icon" href="<?= e_attr($favicon) ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -150,6 +150,183 @@ if (!function_exists('upload_image')) {
     }
 }
 
+if (!function_exists('upload_video')) {
+    /**
+     * Validate and store an uploaded video (Phase 3).
+     *
+     * @param array $file  a single entry from $_FILES
+     * @return array{ok:bool,error:?string,data:array}
+     */
+    function upload_video(array $file, string $subdir = 'news', array $opts = []): array
+    {
+        if (!isset($file['tmp_name'], $file['error'])) {
+            return upload_result(false, 'No file was uploaded.');
+        }
+        if ((int) $file['error'] !== UPLOAD_ERR_OK) {
+            return upload_result(false, upload_error_message((int) $file['error']));
+        }
+        if (!is_uploaded_file($file['tmp_name'])) {
+            return upload_result(false, 'Invalid upload.');
+        }
+
+        $maxSize = (int) ($opts['max_size'] ?? setting_int('max_video_size', (int) config('uploads.max_video_size', 50 * 1024 * 1024)));
+        $size    = (int) ($file['size'] ?? filesize($file['tmp_name']));
+        if ($size <= 0) {
+            return upload_result(false, 'The video file appears to be empty.');
+        }
+        if ($size > $maxSize) {
+            return upload_result(false, 'The video must be smaller than ' . round($maxSize / 1048576, 1) . ' MB.');
+        }
+
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime  = (string) $finfo->file($file['tmp_name']);
+        $allowedMimes = (array) config('uploads.video_mimes', ['video/mp4', 'video/webm']);
+        $allowedExts  = (array) config('uploads.video_exts', ['mp4', 'webm']);
+        if (!in_array($mime, $allowedMimes, true)) {
+            return upload_result(false, 'Only MP4 and WEBM videos are allowed.');
+        }
+        $extForMime = ['video/mp4' => 'mp4', 'video/webm' => 'webm'];
+        $ext = $extForMime[$mime] ?? null;
+        if ($ext === null || !in_array($ext, $allowedExts, true)) {
+            return upload_result(false, 'Unsupported video type.');
+        }
+
+        $subdir  = preg_replace('/[^a-z0-9_]/', '', strtolower($subdir)) ?: 'news';
+        $baseDir = rtrim((string) config('uploads.path', dirname(__DIR__) . '/uploads'), '/');
+        $destDir = $baseDir . '/' . $subdir . '/video/' . date('Y') . '/' . date('m');
+        if (!is_dir($destDir) && !@mkdir($destDir, 0755, true) && !is_dir($destDir)) {
+            return upload_result(false, 'Could not prepare the upload directory.');
+        }
+        $safeName = date('Ymd_His') . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destPath = $destDir . '/' . $safeName;
+        if (!@move_uploaded_file($file['tmp_name'], $destPath)) {
+            return upload_result(false, 'Could not save the uploaded video.');
+        }
+        @chmod($destPath, 0644);
+        $relative = $subdir . '/video/' . date('Y') . '/' . date('m') . '/' . $safeName;
+
+        return upload_result(true, null, [
+            'path'          => $relative,
+            'thumb_path'    => null,
+            'mime'          => $mime,
+            'size'          => $size,
+            'original_name' => upload_safe_display_name($file['name'] ?? ''),
+        ]);
+    }
+}
+
+if (!function_exists('normalize_files_array')) {
+    /**
+     * Turn a multi-file $_FILES entry (name="photos[]") into a list of single
+     * file arrays, skipping empty slots.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    function normalize_files_array(array $entry): array
+    {
+        if (!isset($entry['name'])) {
+            return [];
+        }
+        // Single file (not an array input).
+        if (!is_array($entry['name'])) {
+            return ($entry['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE ? [] : [$entry];
+        }
+        $out = [];
+        foreach ($entry['name'] as $i => $name) {
+            if (($entry['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            $out[] = [
+                'name'     => $entry['name'][$i],
+                'type'     => $entry['type'][$i] ?? '',
+                'tmp_name' => $entry['tmp_name'][$i],
+                'error'    => $entry['error'][$i],
+                'size'     => $entry['size'][$i] ?? 0,
+            ];
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('store_news_media')) {
+    /**
+     * Validate + store a batch of photos and/or one video for a news item,
+     * inserting news_media rows. Sets the news cover to the first image when the
+     * item has no cover yet. Returns per-file errors (does not throw) and the
+     * number stored.
+     *
+     * Call INSIDE a transaction when atomicity with the news row matters.
+     *
+     * @param array{photos?:array,video?:array} $files  raw $_FILES entries
+     * @return array{stored:int,errors:array<int,string>,first_image_id:?int}
+     */
+    function store_news_media(int $newsId, array $files, int $maxPhotos = 8): array
+    {
+        $errors = [];
+        $stored = 0;
+        $firstImageId = null;
+
+        // Existing media count (so edit can't exceed the cap).
+        $existing = (int) fetch_column("SELECT COUNT(*) FROM news_media WHERE news_id = ? AND type = 'image'", [$newsId], 0);
+        $sort     = (int) fetch_column('SELECT COALESCE(MAX(sort_order), -1) FROM news_media WHERE news_id = ?', [$newsId], -1) + 1;
+
+        // Photos.
+        if (!empty($files['photos'])) {
+            $photos = normalize_files_array($files['photos']);
+            foreach ($photos as $p) {
+                if ($existing + $stored >= $maxPhotos) {
+                    $errors[] = 'Only ' . $maxPhotos . ' photos are allowed; extra photos were skipped.';
+                    break;
+                }
+                $res = upload_image($p, 'news', ['thumb_width' => 800]);
+                if (!$res['ok']) {
+                    $errors[] = ($p['name'] ?? 'Photo') . ': ' . ($res['error'] ?? 'upload failed');
+                    continue;
+                }
+                $d = $res['data'];
+                $mediaId = db_insert('news_media', [
+                    'news_id' => $newsId, 'type' => 'image',
+                    'path' => $d['path'], 'thumb_path' => $d['thumb_path'],
+                    'mime' => $d['mime'], 'size_bytes' => $d['size'],
+                    'width' => $d['width'], 'height' => $d['height'],
+                    'original_name' => $d['original_name'], 'sort_order' => $sort++,
+                ]);
+                if ($firstImageId === null) {
+                    $firstImageId = $mediaId;
+                }
+                $stored++;
+            }
+        }
+
+        // Video (single).
+        if (!empty($files['video']) && !empty($files['video']['name'])) {
+            $res = upload_video($files['video'], 'news');
+            if (!$res['ok']) {
+                $errors[] = 'Video: ' . ($res['error'] ?? 'upload failed');
+            } else {
+                $d = $res['data'];
+                db_insert('news_media', [
+                    'news_id' => $newsId, 'type' => 'video',
+                    'path' => $d['path'], 'thumb_path' => null,
+                    'mime' => $d['mime'], 'size_bytes' => $d['size'],
+                    'original_name' => $d['original_name'], 'sort_order' => $sort++,
+                ]);
+                $stored++;
+            }
+        }
+
+        // Set cover if the news item doesn't have one yet.
+        if ($firstImageId !== null) {
+            $hasCover = (int) fetch_column('SELECT cover_media_id IS NOT NULL FROM news WHERE id = ?', [$newsId], 0);
+            if (!$hasCover) {
+                db_update('news', ['cover_media_id' => $firstImageId], ['id' => $newsId]);
+            }
+        }
+
+        return ['stored' => $stored, 'errors' => $errors, 'first_image_id' => $firstImageId];
+    }
+}
+
 if (!function_exists('upload_safe_display_name')) {
     /** Sanitise the original filename for safe *display* only (not used on disk). */
     function upload_safe_display_name(string $name): string

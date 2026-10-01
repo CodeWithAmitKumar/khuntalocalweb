@@ -135,6 +135,81 @@ if (!function_exists('render_card_skeletons')) {
     }
 }
 
+if (!function_exists('render_comment')) {
+    /**
+     * Render one approved comment (and its replies, one level deep).
+     *
+     * @param array<string,mixed> $c
+     */
+    function render_comment(array $c, int $newsId, bool $isReply = false): void
+    {
+        $id      = (int) $c['id'];
+        $cls     = $isReply ? 'ms-4 ms-md-5' : '';
+        echo '<div class="kl-card p-3 ' . $cls . '" style="box-shadow:none">';
+
+        // Header
+        echo '<div class="d-flex align-items-center gap-2 mb-1">';
+        echo '<span class="kl-logo-mark" style="width:30px;height:30px;font-size:.8rem;background:var(--kl-primary-light);color:var(--kl-primary-dark)">'
+            . e(mb_substr((string) ($c['author_name'] ?? '?'), 0, 1)) . '</span>';
+        echo '<div><a class="fw-semibold text-reset" href="' . e_attr(reporter_url((string) $c['author_username'])) . '">'
+            . e((string) $c['author_name']) . '</a>'
+            . '<div class="small text-muted-2">' . e(time_ago((string) $c['created_at'])) . '</div></div>';
+        echo '</div>';
+
+        // Body
+        echo '<p class="mb-2" style="white-space:pre-wrap">' . e((string) $c['body']) . '</p>';
+
+        // Actions (logged in only)
+        if (is_logged_in()) {
+            echo '<div class="d-flex gap-3 small">';
+            if (!$isReply) {
+                echo '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-reply-toggle="' . $id . '">Reply</button>';
+            }
+            echo '<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-muted-2" data-report-toggle="' . $id . '">Report</button>';
+            echo '</div>';
+
+            // Reply form (hidden)
+            if (!$isReply) {
+                echo '<form method="post" action="' . e_attr(base_url('comment.php')) . '" class="mt-2 d-none" data-reply-form="' . $id . '">'
+                    . csrf_field()
+                    . '<input type="hidden" name="news_id" value="' . $newsId . '">'
+                    . '<input type="hidden" name="action" value="add">'
+                    . '<input type="hidden" name="parent_id" value="' . $id . '">'
+                    . '<textarea class="form-control form-control-sm mb-2" name="body" rows="2" required maxlength="5000" placeholder="Write a reply…"></textarea>'
+                    . '<button class="btn btn-emerald btn-sm" type="submit">Reply</button>'
+                    . '</form>';
+            }
+
+            // Report form (hidden)
+            echo '<form method="post" action="' . e_attr(base_url('comment.php')) . '" class="mt-2 d-none" data-report-form="' . $id . '">'
+                . csrf_field()
+                . '<input type="hidden" name="news_id" value="' . $newsId . '">'
+                . '<input type="hidden" name="action" value="report">'
+                . '<input type="hidden" name="comment_id" value="' . $id . '">'
+                . '<div class="input-group input-group-sm">'
+                . '<select class="form-select" name="reason">'
+                . '<option value="offensive">Offensive</option>'
+                . '<option value="spam">Spam</option>'
+                . '<option value="false_information">False information</option>'
+                . '<option value="other">Other</option>'
+                . '</select>'
+                . '<button class="btn btn-outline-danger" type="submit">Report</button>'
+                . '</div></form>';
+        }
+
+        // Replies
+        if (!empty($c['replies'])) {
+            echo '<div class="d-grid gap-2 mt-3">';
+            foreach ($c['replies'] as $r) {
+                render_comment($r, $newsId, true);
+            }
+            echo '</div>';
+        }
+
+        echo '</div>';
+    }
+}
+
 if (!function_exists('render_pagination')) {
     /**
      * Render Bootstrap pagination. $query is the base query string params to

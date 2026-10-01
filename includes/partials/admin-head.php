@@ -23,6 +23,8 @@ $favicon = 'data:image/svg+xml,'
 $items = [
     ['dashboard',    'admin/index.php',        '▣',  'Dashboard',          null],
     ['verification', 'admin/verification.php', '🛡️', 'Verification queue', 'news.verify'],
+    ['comments',     'admin/comments.php',     '💬', 'Comment moderation', 'comment.moderate'],
+    ['reports',      'admin/reports.php',      '⚑',  'Reports',            'report.review'],
 ];
 ?><!doctype html>
 <html lang="<?= e((string) config('app.locale', 'en')) ?>">

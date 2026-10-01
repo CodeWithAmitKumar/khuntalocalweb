@@ -15,6 +15,9 @@
 composer.lock
 *.log
 
+# Stray scratch/test HTML captured at the project root (never part of the app)
+/*.html
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

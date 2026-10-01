@@ -50,16 +50,32 @@ require __DIR__ . '/includes/partials/head.php';
 
 <?php
 if ($media === 'video') {
-    render_empty_state('Video news is coming soon', 'Video submissions and playback arrive in Phase 3.', '🎬');
-} elseif ($media === 'photo') {
-    $batch = news_fetch_published([], 'latest', 24);
-    $photos = array_values(array_filter($batch, static fn($n) => !empty($n['cover_path'])));
-    if ($photos) {
+    $perPage = 12;
+    $page    = max(1, (int) input('page', '1'));
+    $total   = news_count_published(['has_video' => true]);
+    $pages   = (int) ceil($total / $perPage);
+    $items   = news_fetch_published(['has_video' => true], 'latest', $perPage, ($page - 1) * $perPage);
+    if ($items) {
         echo '<div class="row g-3">';
-        foreach ($photos as $n) { render_news_card($n); }
+        foreach ($items as $n) { render_news_card($n); }
         echo '</div>';
+        render_pagination($page, $pages, 'latest.php', ['media' => 'video']);
     } else {
-        render_empty_state('No photo stories yet', 'Stories with a cover photo will appear here.', '📸');
+        render_empty_state('No video stories yet', 'Stories with a video will appear here.', '🎬');
+    }
+} elseif ($media === 'photo') {
+    $perPage = 12;
+    $page    = max(1, (int) input('page', '1'));
+    $total   = news_count_published(['has_gallery' => true]);
+    $pages   = (int) ceil($total / $perPage);
+    $items   = news_fetch_published(['has_gallery' => true], 'latest', $perPage, ($page - 1) * $perPage);
+    if ($items) {
+        echo '<div class="row g-3">';
+        foreach ($items as $n) { render_news_card($n); }
+        echo '</div>';
+        render_pagination($page, $pages, 'latest.php', ['media' => 'photo']);
+    } else {
+        render_empty_state('No photo stories yet', 'Stories with photos will appear here.', '📸');
     }
 } else {
     $perPage = 12;
