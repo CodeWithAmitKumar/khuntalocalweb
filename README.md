@@ -14,14 +14,14 @@ on ordinary PHP hosting.
 
 ## 🚦 Build status — Phase 1 of 5
 
-This repository is being built in five reviewable phases. **Phases 1–3 are complete.**
+This repository is being built in five reviewable phases. **Phases 1–4 are complete.**
 
 | Phase | Scope | Status |
 |------|-------|--------|
 | **1** | Database, config, core library, auth (register/login/logout), homepage, news submission, basic article/category/search/profile pages | ✅ **Done** |
 | **2** | Reporter dashboard, admin dashboard, verification review workflow (approve / reject / request info / schedule) | ✅ **Done** |
 | **3** | Media (photo galleries + video), advanced search/filter, comments, reports, engagement (like/save/share), notifications centre | ✅ **Done** |
-| 4 | Automated verification engine, cron jobs, auto-publish rules, audit-log UI | ⏳ Planned |
+| **4** | Automated verification engine, cron jobs, auto-publish rules, admin settings + audit-log UI, maintenance mode | ✅ **Done** |
 | 5 | REST API + Android integration, production security hardening & full SEO/PWA | ⏳ Planned |
 
 The **complete database schema for all phases** and the **reusable core library**
@@ -71,9 +71,31 @@ are already in place, so later phases build on a stable foundation.
 - **Notifications centre** — `notifications.php` lists updates, mark-all-read,
   click-through that marks read and opens the story; header shows an unread badge.
 
+### Added in Phase 4
+- **Automated verification engine** (`includes/verification_engine.php`) — runs
+  required-field, duplicate/similarity, source, reporter-history, timestamp,
+  location, media-metadata (EXIF), spam, repeated-submission, user-report and
+  (pluggable, off-by-default) external-evidence checks; computes a **risk level**
+  and a **critical** flag; persists a structured result to `news_verification`.
+  Runs on submit and is re-runnable from the verify screen. It never asserts a
+  story is true and shows no "% true".
+- **Cron jobs** (`cron/`, CLI or token-guarded HTTP, all idempotent):
+  `verification-check` (re-checks the queue + escalates overdue items),
+  `auto-publish` (policy-gated; **never publishes on a timer alone**),
+  `notification-worker`, `cleanup` (expire breaking, archive expired, prune).
+- **Auto-publish rules** — when enabled, the cron re-runs final checks after the
+  minimum review window and publishes only non-critical items (low-risk only, if
+  that policy is on); scheduled stories publish at their time. Every decision is
+  written to the audit log as `AUTO_PUBLISH_DECISION`. Defaults are conservative
+  (auto-publish **off**, low-risk-only **on**).
+- **Admin settings UI** (`admin/settings.php`) — edit site, verification timing,
+  auto-publish, moderation, upload and maintenance settings; changes are audited.
+- **Audit-log viewer** (`admin/audit.php`) — filter by action, paginated.
+- **Maintenance mode** — closes the public site to everyone but staff (auth pages
+  stay open) with a 503 page.
+
 ### Honestly deferred (shown as "coming soon", never broken links)
-The automated-verification *engine* (external evidence + scoring), cron and
-auto-publish, the REST API, and deep SEO/PWA. Each is scheduled above.
+The REST API for Android, and deep production SEO/PWA. Both are Phase 5.
 
 > **On accuracy:** KhuntaLocal never claims an automated system can prove a story
 > is absolutely true. The review process collects evidence, checks for duplicates
@@ -115,9 +137,10 @@ khuntalocalweb/
 │   └── seed.sql           Roles, permissions, languages, locations, categories,
 │                          settings, super admin, sample news
 ├── scripts/selftest.php   Pure-logic test suite (no DB needed)
-├── admin/                 Console: dashboard, verification, comment & report moderation
+├── admin/                 Console: dashboard, verification, moderation, settings, audit
 ├── reporter/              Reporter dashboard + edit/resubmit
-├── api/  cron/            Placeholders for Phases 4–5 (see each README)
+├── cron/                  verification-check, auto-publish, notification-worker, cleanup
+├── api/                   Placeholder for Phase 5 (REST API)
 ```
 
 ### Core library (`includes/`)
@@ -187,6 +210,31 @@ location ~* ^/uploads/.*\.(php|phtml|phar)$ { deny all; }
 
 ---
 
+## ⏱️ Cron setup (Phase 4)
+
+All cron scripts are idempotent and safe to run repeatedly. Run them from the
+command line (recommended) or trigger over HTTPS with the configured
+`CRON_SECRET` (`?token=...`). Example crontab:
+
+```cron
+# Re-check the verification queue every 15 minutes
+*/15 * * * *  php /path/to/khuntalocal/cron/verification-check.php   >> /var/log/kl-verify.log 2>&1
+# Apply the auto-publish policy + publish scheduled stories every 10 minutes
+*/10 * * * *  php /path/to/khuntalocal/cron/auto-publish.php         >> /var/log/kl-autopub.log 2>&1
+# Deliver/clean notifications hourly
+0 * * * *     php /path/to/khuntalocal/cron/notification-worker.php  >> /var/log/kl-notify.log 2>&1
+# Housekeeping daily at 03:30
+30 3 * * *    php /path/to/khuntalocal/cron/cleanup.php              >> /var/log/kl-cleanup.log 2>&1
+```
+
+HTTP form (if you cannot use CLI): set a long random `CRON_SECRET`, then
+`curl "https://example.com/cron/auto-publish.php?token=YOUR_CRON_SECRET"`.
+
+Auto-publish is controlled from **Admin → Settings** (Automatic publishing,
+Auto-publish only low-risk) and the verification timing (min/max minutes).
+
+---
+
 ## 🔑 Admin login setup
 
 `seed.sql` creates two accounts. **Change these passwords immediately** after the
@@ -206,7 +254,7 @@ WHERE u.email = 'you@example.com' AND r.slug = 'super_admin';
 
 ---
 
-## 🔒 Security checklist (implemented in Phases 1–3)
+## 🔒 Security checklist (implemented in Phases 1–4)
 
 - [x] **PDO prepared statements** for all user-controlled input (no string-built SQL)
 - [x] `password_hash()` / `password_verify()` (bcrypt via `PASSWORD_DEFAULT`, auto-rehash)
@@ -218,6 +266,10 @@ WHERE u.email = 'you@example.com' AND r.slug = 'super_admin';
       allowlist, size limit, random safe filenames, no-exec `.htaccess` in `uploads/`
 - [x] **Comment & report moderation** with per-action RBAC; AJAX engagement
       endpoint is CSRF-checked and rate-limited
+- [x] **Auto-publish is policy-gated, transactional and idempotent** — it re-runs
+      checks and never publishes on a timer alone; every decision is audited
+- [x] **Settings changes audited**; cron HTTP triggers require a secret token;
+      **maintenance mode** closes the public site to non-staff
 - [x] **RBAC** enforced on every admin/verification action (`can()`,
       `require_permission()` per action) + **audit logging** of each decision
 - [x] Workflow transitions are transactional & idempotent (never double-publish)
@@ -249,11 +301,20 @@ API token auth, and a full security review (Phase 5).
   redirected).
 - **Phase 3 against MySQL/MariaDB:** multi-photo submit stores both images with
   generated thumbnails and sets the cover; the video player and photo gallery
-  render; like/save/share (JSON) update rows + counters; a comment posts as
-  `pending` under moderation, an admin approves it and it appears with an updated
-  count; a news report is filed and a moderator resolves it; advanced search with
-  location/language/date filters returns results; the notifications centre and
-  moderation pages render with zero PHP errors; uploaded files are git-ignored.
+  render (cover excluded from the gallery); like/save/share (JSON) update rows +
+  counters; a comment posts as `pending` under moderation, an admin approves it
+  and it appears with an updated count; a news report is filed and a moderator
+  resolves it; advanced search with location/language/date filters returns
+  results; the notifications centre and moderation pages render with zero PHP
+  errors; uploaded files are git-ignored.
+- **Phase 4 against MySQL/MariaDB:** the engine persists checks + risk on submit;
+  `verification-check`, `notification-worker` and `cleanup` crons run cleanly;
+  `auto-publish` does nothing while off, publishes a low-risk item once when
+  enabled (idempotent on re-run), **holds** a high-risk item (open report →
+  critical), and publishes a due scheduled story — each logged as
+  `AUTO_PUBLISH_DECISION`; the settings UI saves + audits + busts cache; the
+  audit viewer lists entries; the verify screen re-runs checks with zero errors;
+  maintenance mode returns 503 to anonymous users, 200 for staff, with login open.
 
 Run the logic suite yourself:
 ```bash

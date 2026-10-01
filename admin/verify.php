@@ -67,6 +67,11 @@ if (is_post()) {
             $type = $done ? 'success' : 'error';
             break;
 
+        case 'recheck':
+            verification_engine_run($id, ['actor_type' => 'admin', 'admin_id' => $adminId]);
+            $msg = 'Automated checks re-run.';
+            break;
+
         case 'note':
             // Save an internal verification note (admin-only).
             $note = trim((string) ($_POST['internal_note'] ?? ''));
@@ -103,11 +108,20 @@ if ($news['status'] === 'pending') {
 /* ---- Gather review data ----------------------------------------------- */
 $sources   = news_sources_for($id);
 $similar   = verification_find_similar($news, 6);
-$analysis  = verification_basic_checks($news, $sources, $similar);
 $history   = reporter_history((int) $news['user_id']);
 $timeline  = verification_timeline($id);
-$verRow    = fetch('SELECT * FROM news_verification WHERE news_id = ? LIMIT 1', [$id]);
-$internal  = $verRow['internal_notes'] ?? '';
+
+// Persisted automated-engine result (run once if missing).
+$ver = verification_latest($id);
+if (!$ver) {
+    verification_engine_run($id, ['actor_type' => 'system']);
+    $ver = verification_latest($id);
+}
+$analysis = ['checks' => $ver['checks'] ?? [], 'concerns' => $ver['concerns'] ?? []];
+$engineRisk = (string) ($ver['risk_level'] ?? ($news['risk_level'] ?? 'unknown'));
+$lastChecked = $ver['last_checked_at'] ?? null;
+$evidence   = $ver['evidence'] ?? [];
+$internal   = $ver['internal_notes'] ?? '';
 $timer     = review_timer($news['submitted_at'] ?? null);
 [$statusLabel, $statusVariant] = status_label((string) $news['status']);
 
@@ -192,20 +206,30 @@ require KL_INCLUDES . '/partials/admin-head.php';
 
     <!-- Checks -->
     <div class="kl-card p-3" style="box-shadow:none">
-      <h3 class="h6 mb-2">Verification checks</h3>
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h3 class="h6 mb-0">Verification checks</h3>
+        <span class="kl-risk kl-risk--<?= e_attr($engineRisk) ?>">Risk: <?= e($engineRisk) ?></span>
+      </div>
       <?php foreach ($analysis['checks'] as $c): ?>
         <div class="kl-check kl-check--<?= e_attr($c['status']) ?>">
-          <span class="kl-check__badge"><?= e(strtoupper($c['status'])) ?></span>
-          <div><span class="fw-semibold"><?= e($c['label']) ?></span><div class="small text-muted-2"><?= e($c['detail']) ?></div></div>
+          <span class="kl-check__badge"><?= e(strtoupper((string) $c['status'])) ?></span>
+          <div><span class="fw-semibold"><?= e((string) $c['label']) ?></span><div class="small text-muted-2"><?= e((string) $c['detail']) ?></div></div>
         </div>
       <?php endforeach; ?>
       <?php if ($analysis['concerns']): ?>
         <div class="alert alert-warning mt-3 mb-0 small">
           <strong>Potential concerns</strong>
-          <ul class="mb-0 mt-1"><?php foreach ($analysis['concerns'] as $c) echo '<li>' . e($c) . '</li>'; ?></ul>
+          <ul class="mb-0 mt-1"><?php foreach ($analysis['concerns'] as $c) echo '<li>' . e((string) $c) . '</li>'; ?></ul>
         </div>
       <?php endif; ?>
-      <div class="small text-muted-2 mt-2">Automated checks assist your decision; they do not prove a story is true. External-evidence checks expand in Phase 4.</div>
+      <div class="d-flex align-items-center justify-content-between mt-3">
+        <span class="small text-muted-2">Last checked: <?= e($lastChecked ? time_ago((string) $lastChecked) : 'never') ?></span>
+        <form method="post" action="<?= e_attr(base_url('admin/verify.php?id=' . $id)) ?>" class="m-0">
+          <?= csrf_field() ?><input type="hidden" name="action" value="recheck">
+          <button class="btn btn-sm btn-outline-emerald" type="submit">↻ Re-run checks</button>
+        </form>
+      </div>
+      <div class="small text-muted-2 mt-2">Automated checks assist your decision; they do not prove a story is true.</div>
     </div>
 
     <!-- Similar / duplicates -->

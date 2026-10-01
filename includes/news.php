@@ -19,6 +19,8 @@ if (!function_exists('news_select_base')) {
                    n.language_code, n.risk_level, n.seo_title, n.meta_description,
                    n.canonical_url, n.view_count, n.like_count, n.share_count,
                    n.comment_count, n.published_at, n.created_at, n.updated_at,
+                   n.submitted_at, n.reviewed_at, n.reviewed_by, n.scheduled_at,
+                   n.expires_at, n.rejection_reason, n.cover_media_id,
                    n.user_id, n.category_id, n.location_id,
                    c.name AS category_name, c.slug AS category_slug,
                    c.color AS category_color, c.icon AS category_icon,

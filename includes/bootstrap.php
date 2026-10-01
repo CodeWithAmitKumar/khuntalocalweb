@@ -72,6 +72,7 @@ require KL_INCLUDES . '/notifications.php';
 require KL_INCLUDES . '/upload.php';
 require KL_INCLUDES . '/news.php';
 require KL_INCLUDES . '/verification.php';
+require KL_INCLUDES . '/verification_engine.php';
 require KL_INCLUDES . '/comments.php';
 require KL_INCLUDES . '/engagement.php';
 require KL_INCLUDES . '/seo.php';

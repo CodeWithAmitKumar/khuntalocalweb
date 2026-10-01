@@ -107,6 +107,13 @@ if (is_post()) {
                 return $newsId;
             });
 
+            // Run automated verification checks (best-effort; assists reviewers).
+            try {
+                verification_engine_run($newsId, ['actor_type' => 'system']);
+            } catch (Throwable $ex) {
+                error_log('verification engine (submit) failed: ' . $ex->getMessage());
+            }
+
             // Notifications (reporter + verification admins).
             notify((int) $user['id'], 'news.submitted', 'Your story was submitted',
                 'It is now awaiting verification. We will let you know once it is reviewed.',

@@ -12,6 +12,29 @@
 declare(strict_types=1);
 if (!defined('KL_BOOTSTRAPPED')) { http_response_code(500); exit('Not bootstrapped.'); }
 
+// Maintenance mode: public pages are closed to everyone except staff. Auth pages
+// stay open so staff can still log in.
+$kl_script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+if (setting_bool('maintenance_mode', false)
+    && !in_array($kl_script, ['login.php', 'register.php', 'logout.php'], true)
+    && !(is_logged_in() && is_staff((int) current_user()['id']))) {
+    http_response_code(503);
+    header('Retry-After: 3600');
+    $sn = site_name();
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>' . e($sn) . ' — Under maintenance</title>'
+        . '<link rel="stylesheet" href="' . e_attr(asset('vendor/bootstrap/bootstrap.min.css')) . '">'
+        . '<link rel="stylesheet" href="' . e_attr(asset('css/theme.css')) . '"></head>'
+        . '<body><div class="container container-kl" style="max-width:560px;margin:12vh auto;text-align:center">'
+        . '<div class="kl-form-card"><div style="font-size:2.5rem">🛠️</div>'
+        . '<h1 class="h4 mt-2">We\'ll be right back</h1>'
+        . '<p class="text-muted-2">' . e($sn) . ' is undergoing brief maintenance. Please check back shortly.</p>'
+        . '<a class="btn btn-outline-emerald btn-sm" href="' . e_attr(base_url('login.php')) . '">Staff login</a>'
+        . '</div></div></body></html>';
+    exit;
+}
+
 $meta      = isset($meta) && is_array($meta) ? array_merge(default_meta(), $meta) : default_meta();
 $bodyClass = $bodyClass ?? '';
 $activeNav = $activeNav ?? '';

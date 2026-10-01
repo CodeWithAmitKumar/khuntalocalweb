@@ -25,6 +25,8 @@ $items = [
     ['verification', 'admin/verification.php', '🛡️', 'Verification queue', 'news.verify'],
     ['comments',     'admin/comments.php',     '💬', 'Comment moderation', 'comment.moderate'],
     ['reports',      'admin/reports.php',      '⚑',  'Reports',            'report.review'],
+    ['audit',        'admin/audit.php',        '📋', 'Audit log',          'audit.view'],
+    ['settings',     'admin/settings.php',     '⚙️', 'Settings',           'settings.manage'],
 ];
 ?><!doctype html>
 <html lang="<?= e((string) config('app.locale', 'en')) ?>">

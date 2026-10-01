@@ -17,9 +17,8 @@ if (!function_exists('settings_all')) {
      */
     function settings_all(): array
     {
-        static $cache = null;
-        if ($cache !== null) {
-            return $cache;
+        if (isset($GLOBALS['_kl_settings_cache']) && is_array($GLOBALS['_kl_settings_cache'])) {
+            return $GLOBALS['_kl_settings_cache'];
         }
         $cache = [];
         try {
@@ -31,7 +30,7 @@ if (!function_exists('settings_all')) {
         foreach ($rows as $row) {
             $cache[$row['key']] = settings_cast($row['value'], $row['type']);
         }
-        return $cache;
+        return $GLOBALS['_kl_settings_cache'] = $cache;
     }
 }
 
@@ -78,6 +77,39 @@ if (!function_exists('setting_int')) {
     function setting_int(string $key, int $default = 0): int
     {
         return (int) setting($key, $default);
+    }
+}
+
+if (!function_exists('setting_set')) {
+    /**
+     * Persist a setting value. The row's declared `type` controls normalisation.
+     * Unknown keys are created as 'string'. Busts the per-request cache.
+     */
+    function setting_set(string $key, $value, ?int $updatedBy = null): bool
+    {
+        try {
+            $type = fetch_column('SELECT type FROM settings WHERE `key` = ? LIMIT 1', [$key]);
+            if ($type === false || $type === null) {
+                $type = 'string';
+                db_run('INSERT INTO settings (`key`, `value`, `type`) VALUES (?, ?, ?)', [$key, '', $type]);
+            }
+            // Normalise to stored string form.
+            if ($type === 'bool') {
+                $store = (in_array(strtolower((string) $value), ['1', 'true', 'yes', 'on'], true) || $value === true) ? '1' : '0';
+            } elseif ($type === 'int') {
+                $store = (string) (int) $value;
+            } elseif ($type === 'json') {
+                $store = is_string($value) ? $value : json_encode($value, JSON_UNESCAPED_UNICODE);
+            } else {
+                $store = (string) $value;
+            }
+            db_run('UPDATE settings SET `value` = ?, updated_by = ? WHERE `key` = ?', [$store, $updatedBy ?? auth_user_id(), $key]);
+            unset($GLOBALS['_kl_settings_cache']); // bust cache
+            return true;
+        } catch (Throwable $ex) {
+            error_log('setting_set failed (' . $key . '): ' . $ex->getMessage());
+            return false;
+        }
     }
 }
 
