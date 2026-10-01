@@ -412,3 +412,72 @@ h1, h2, h3, h4, h5, .fw-head { letter-spacing: -0.01em; }
 }
 .kl-stat__num { font-size: 1.6rem; font-weight: 800; color: var(--kl-charcoal); line-height: 1; }
 .kl-stat__label { color: var(--kl-gray); font-size: .82rem; font-weight: 600; margin-top: .3rem; }
+.kl-stat--accent { border-left: 4px solid var(--kl-primary); }
+.kl-stat--warn   { border-left: 4px solid var(--kl-amber); }
+.kl-stat--danger { border-left: 4px solid var(--kl-red); }
+.kl-stat__icon { font-size: 1.3rem; opacity: .85; }
+
+/* =============================================================================
+   Admin console (Phase 2)
+   ============================================================================= */
+body.kl-admin { background: #eef1f3; padding-bottom: 0; }
+.kl-admin-shell { display: flex; min-height: 100vh; }
+
+.kl-admin-sidebar {
+    width: 250px; flex-shrink: 0; background: var(--kl-charcoal); color: #cdd7df;
+    padding: 1rem .75rem; display: flex; flex-direction: column; gap: .25rem;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.kl-admin-role { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: #8aa0ad; }
+.kl-admin-nav { display: flex; flex-direction: column; gap: .15rem; }
+.kl-admin-link {
+    display: flex; align-items: center; gap: .65rem; padding: .6rem .8rem;
+    border-radius: 10px; color: #cdd7df; font-weight: 600; font-size: .92rem;
+    transition: var(--kl-transition);
+}
+.kl-admin-link:hover { background: rgba(255,255,255,.07); color: #fff; }
+.kl-admin-link.active { background: var(--kl-primary); color: #fff; }
+.kl-admin-link .ic { width: 20px; text-align: center; }
+.kl-admin-sep { height: 1px; background: rgba(255,255,255,.1); margin: .6rem .4rem; }
+.kl-admin-soon { margin-top: auto; font-size: .72rem; color: #7f96a3; line-height: 1.5; padding-top: 1rem; }
+
+.kl-admin-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.kl-admin-topbar {
+    display: flex; align-items: center; gap: .75rem;
+    background: #fff; border-bottom: 1px solid var(--kl-border);
+    padding: .75rem 1.25rem; position: sticky; top: 0; z-index: 20;
+}
+.kl-admin-content { padding: 1.25rem; max-width: 1200px; width: 100%; }
+
+@media (max-width: 991.98px) {
+    .kl-admin-sidebar {
+        position: fixed; left: 0; top: 0; z-index: 1050; transform: translateX(-100%);
+        transition: transform .2s ease; box-shadow: 0 0 40px rgba(0,0,0,.3);
+    }
+    .kl-admin-sidebar.open { transform: translateX(0); }
+}
+
+/* Verification split layout */
+.kl-verify-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
+@media (min-width: 992px) { .kl-verify-grid { grid-template-columns: 1.1fr .9fr; align-items: start; } }
+
+.kl-check { display: flex; gap: .6rem; align-items: flex-start; padding: .55rem 0; border-bottom: 1px dashed var(--kl-border); }
+.kl-check:last-child { border-bottom: none; }
+.kl-check__badge { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: .12rem .45rem; border-radius: 6px; white-space: nowrap; }
+.kl-check--pass .kl-check__badge { background: var(--kl-primary-light); color: var(--kl-primary-dark); }
+.kl-check--warn .kl-check__badge { background: var(--kl-amber-bg); color: var(--kl-amber); }
+.kl-check--fail .kl-check__badge { background: var(--kl-red-bg); color: var(--kl-red); }
+.kl-check--info .kl-check__badge { background: var(--kl-info-bg); color: var(--kl-blue); }
+
+/* Timer pills in the queue */
+.kl-timer { font-size: .75rem; font-weight: 700; padding: .15rem .5rem; border-radius: 6px; white-space: nowrap; }
+.kl-timer--within  { background: var(--kl-info-bg); color: var(--kl-blue); }
+.kl-timer--due     { background: var(--kl-amber-bg); color: var(--kl-amber); }
+.kl-timer--overdue { background: var(--kl-red-bg); color: var(--kl-red); }
+.kl-timer--new     { background: var(--kl-primary-light); color: var(--kl-primary-dark); }
+
+.kl-risk { font-size: .68rem; font-weight: 800; text-transform: uppercase; padding: .12rem .45rem; border-radius: 6px; }
+.kl-risk--low { background: var(--kl-primary-light); color: var(--kl-primary-dark); }
+.kl-risk--medium { background: var(--kl-amber-bg); color: var(--kl-amber); }
+.kl-risk--high { background: var(--kl-red-bg); color: var(--kl-red); }
+.kl-risk--unknown { background: #eef1f4; color: var(--kl-gray); }

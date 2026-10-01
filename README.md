@@ -14,12 +14,12 @@ on ordinary PHP hosting.
 
 ## 🚦 Build status — Phase 1 of 5
 
-This repository is being built in five reviewable phases. **Phase 1 is complete.**
+This repository is being built in five reviewable phases. **Phases 1–2 are complete.**
 
 | Phase | Scope | Status |
 |------|-------|--------|
 | **1** | Database, config, core library, auth (register/login/logout), homepage, news submission, basic article/category/search/profile pages | ✅ **Done** |
-| 2 | Reporter dashboard, admin dashboard, verification review workflow | ⏳ Planned |
+| **2** | Reporter dashboard, admin dashboard, verification review workflow (approve / reject / request info / schedule) | ✅ **Done** |
 | 3 | Full media (galleries + video), advanced search/filter, comments, reports, notifications centre | ⏳ Planned |
 | 4 | Automated verification engine, cron jobs, auto-publish rules, audit-log UI | ⏳ Planned |
 | 5 | REST API + Android integration, production security hardening & full SEO/PWA | ⏳ Planned |
@@ -38,10 +38,25 @@ are already in place, so later phases build on a stable foundation.
   and a profile page with editable details + a **"My submissions"** tracker.
 - Role-based access control, audit logging, DB notifications — all wired.
 
+### Added in Phase 2
+- **Reporter dashboard** (`/reporter/`) — submission stat cards + full table with
+  verification status, review time, reviewer notes, and per-item actions.
+- **Edit & resubmit** (`/reporter/edit.php`) — edit eligible submissions; saving a
+  *needs-information* item resubmits it for review (notifies verifiers).
+- **Admin console** (`/admin/`) — dashboard metrics (total news, pending
+  verification, published today, breaking, reports, users) + a verification queue
+  with review timers and risk flags.
+- **Verification review** (`/admin/verify.php`) — split layout: original
+  submission on the left; a verification assistant on the right (reporter history,
+  automated checks, possible duplicates/similar stories, internal notes, full
+  audit history). Actions: **Approve & Publish**, **Request more information**,
+  **Reject** (reason required), **Schedule** — all transactional, audited,
+  idempotent (never double-publishes), and they notify the reporter.
+
 ### Honestly deferred (shown as "coming soon", never broken links)
-Full photo galleries & video, comments, save/report buttons, the reporter &
-admin dashboards, the automated-verification engine, cron/auto-publish, the REST
-API, and deep SEO/PWA. Each is scheduled above.
+Full photo galleries & video, comments, save/report buttons, the notifications
+centre, the automated-verification *engine* (external evidence + scoring),
+cron/auto-publish, the REST API, and deep SEO/PWA. Each is scheduled above.
 
 > **On accuracy:** KhuntaLocal never claims an automated system can prove a story
 > is absolutely true. The review process collects evidence, checks for duplicates
@@ -80,7 +95,9 @@ khuntalocalweb/
 │   └── seed.sql           Roles, permissions, languages, locations, categories,
 │                          settings, super admin, sample news
 ├── scripts/selftest.php   Pure-logic test suite (no DB needed)
-├── admin/  reporter/  api/  cron/   Placeholders for Phases 2–5 (see each README)
+├── admin/                 Admin console: dashboard, verification queue + review
+├── reporter/              Reporter dashboard + edit/resubmit
+├── api/  cron/            Placeholders for Phases 4–5 (see each README)
 ```
 
 ### Core library (`includes/`)
@@ -169,7 +186,7 @@ WHERE u.email = 'you@example.com' AND r.slug = 'super_admin';
 
 ---
 
-## 🔒 Security checklist (implemented in Phase 1)
+## 🔒 Security checklist (implemented in Phases 1–2)
 
 - [x] **PDO prepared statements** for all user-controlled input (no string-built SQL)
 - [x] `password_hash()` / `password_verify()` (bcrypt via `PASSWORD_DEFAULT`, auto-rehash)
@@ -179,12 +196,14 @@ WHERE u.email = 'you@example.com' AND r.slug = 'super_admin';
 - [x] **Output escaping** via `e()` everywhere user content is printed
 - [x] **Secure uploads**: content-based MIME check, extension allowlist, size limit,
       random safe filenames, no-exec `.htaccess` in `uploads/`
-- [x] **RBAC** helpers (`can()`, `require_permission()`) + **audit logging**
+- [x] **RBAC** enforced on every admin/verification action (`can()`,
+      `require_permission()` per action) + **audit logging** of each decision
+- [x] Workflow transitions are transactional & idempotent (never double-publish)
 - [x] Sensitive dirs blocked via `.htaccess`; config file git-ignored
 - [x] Server-side validation (client checks are hints only)
 
 Hardening that lands with its feature in later phases: comment/report moderation,
-admin-action authorization UI, API token auth, and a full security review (Phase 5).
+API token auth, and a full security review (Phase 5).
 
 ---
 
@@ -199,6 +218,13 @@ admin-action authorization UI, API token auth, and a full security review (Phase
   story with its source, verification log and notifications; seeded admin and
   reporter log in; wrong passwords and CSRF-less POSTs are rejected (419);
   the view counter increments.
+- **Phase 2 workflow against MySQL/MariaDB:** admin + reporter dashboards render;
+  opening a pending item auto-claims it (`pending` → `under_review`); request-info,
+  reject (reason required; empty reason blocked), approve (sets `published_at`) and
+  re-approve (idempotent — one audit entry) all behave correctly and notify the
+  reporter; a plain reporter is refused admin pages (403); a reporter can
+  edit/resubmit only their own eligible submissions (others → 404, published →
+  redirected).
 
 Run the logic suite yourself:
 ```bash

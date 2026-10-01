@@ -1,7 +1,14 @@
 # reporter/
 
-Reporter dashboard (submission stats, recent submissions, verification status).
+Reporter area. **Phase 2 — implemented.**
 
-**Status: planned for Phase 2.** In Phase 1, a reporter can already submit news
-(`/submit-news.php`) and track submissions from their profile
-(`/profile.php`). The richer dashboard with stat cards lives here from Phase 2.
+- `index.php` — reporter dashboard: submission stat cards (total, published,
+  pending, under review, needs info, rejected) + a full submissions table with
+  verification status, reviewer notes, review time and per-item actions.
+- `edit.php` — edit an eligible submission (`draft`, `pending`,
+  `needs_information`). Saving a *needs-information* item resubmits it for review
+  and notifies the verification team. Ownership and status are enforced
+  server-side.
+
+Reporters can also submit new stories at `/submit-news.php` and view a quick
+"My submissions" list on `/profile.php`.

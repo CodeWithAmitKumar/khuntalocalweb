@@ -55,19 +55,33 @@ $nav = function (string $key, string $href, string $label) use ($activeNav): str
         </form>
 
         <?php if ($u): ?>
+          <?php $unread = unread_notification_count((int) $u['id']); ?>
+          <?php if (is_staff((int) $u['id'])): ?>
+            <a href="<?= e_attr(base_url('admin/index.php')) ?>" class="btn btn-outline-emerald btn-sm d-none d-lg-inline-flex">Admin</a>
+          <?php endif; ?>
           <a href="<?= e_attr(base_url('submit-news.php')) ?>" class="btn btn-emerald btn-sm d-none d-sm-inline-flex">＋ Submit</a>
           <div class="dropdown">
-            <button class="btn btn-outline-emerald btn-sm dropdown-toggle" type="button"
+            <button class="btn btn-outline-emerald btn-sm dropdown-toggle position-relative" type="button"
                     data-bs-toggle="dropdown" aria-expanded="false">
               <?= e(mb_strimwidth($u['name'], 0, 16, '…')) ?>
+              <?php if ($unread > 0): ?>
+                <span class="badge rounded-pill text-bg-danger position-absolute top-0 start-100 translate-middle" style="font-size:.6rem"><?= e(format_count($unread)) ?></span>
+              <?php endif; ?>
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="<?= e_attr(base_url('profile.php')) ?>">My profile</a></li>
+              <?php if ($unread > 0): ?>
+                <li><span class="dropdown-item-text small text-emerald">🔔 <?= e((string) $unread) ?> new update<?= $unread === 1 ? '' : 's' ?></span></li>
+                <li><hr class="dropdown-divider"></li>
+              <?php endif; ?>
+              <li><a class="dropdown-item" href="<?= e_attr(base_url('reporter/index.php')) ?>">Reporter dashboard</a></li>
               <li><a class="dropdown-item" href="<?= e_attr(base_url('submit-news.php')) ?>">Submit news</a></li>
-              <li><a class="dropdown-item" href="<?= e_attr(base_url('profile.php#submissions')) ?>">My submissions</a></li>
+              <li><a class="dropdown-item" href="<?= e_attr(base_url('profile.php')) ?>">My profile</a></li>
               <?php if (is_staff((int) $u['id'])): ?>
                 <li><hr class="dropdown-divider"></li>
-                <li><span class="dropdown-item-text text-muted-2 small">Admin tools — Phase 2</span></li>
+                <li><a class="dropdown-item" href="<?= e_attr(base_url('admin/index.php')) ?>">Admin console</a></li>
+                <?php if (can('news.verify', (int) $u['id'])): ?>
+                  <li><a class="dropdown-item" href="<?= e_attr(base_url('admin/verification.php')) ?>">Verification queue</a></li>
+                <?php endif; ?>
               <?php endif; ?>
               <li><hr class="dropdown-divider"></li>
               <li>
