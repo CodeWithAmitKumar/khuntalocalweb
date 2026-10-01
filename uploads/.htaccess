@@ -1,0 +1,32 @@
+# KhuntaLocal — hard lock-down for the uploads tree.
+# User-supplied files must NEVER be executed as code.
+
+# 1) Disable any server-side execution handlers.
+php_flag engine off
+<IfModule mod_php.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_admin_flag engine off
+</IfModule>
+
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .pht .phar .cgi .pl .py .asp .aspx .jsp .sh
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .pht .phar
+
+# 2) Block direct access to anything that is not a known-safe media type.
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(?i:php|phtml|php3|php4|php5|php7|php8|pht|phar|cgi|pl|py|asp|aspx|jsp|sh|exe|htaccess)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "\.(?i:php|phtml|php3|php4|php5|php7|php8|pht|phar|cgi|pl|py|asp|aspx|jsp|sh|exe|htaccess)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+Options -ExecCGI -Indexes

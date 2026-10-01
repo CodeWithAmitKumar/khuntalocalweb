@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /reporter/
+Disallow: /api/
+Disallow: /config/
+Disallow: /includes/
+Disallow: /cron/
+Disallow: /uploads/avatars/
+
+# A full XML sitemap is generated in a later phase.
+# Sitemap: https://example.com/sitemap.xml
