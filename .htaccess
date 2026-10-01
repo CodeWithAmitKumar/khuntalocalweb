@@ -1,0 +1,42 @@
+# KhuntaLocal — root Apache configuration (clean URLs + hardening).
+# On Nginx, replicate the rewrites in your server block (see README).
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Set RewriteBase to "/" for a domain root, or "/subfolder/" if installed
+    # inside a subdirectory.
+    RewriteBase /
+
+    # Never rewrite requests for real files or directories.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Clean URLs ---------------------------------------------------------
+    # /news/road-construction-begins-in-khunta
+    RewriteRule ^news/([A-Za-z0-9\-]+)/?$ news.php?slug=$1 [L,QSA]
+    # /category/local
+    RewriteRule ^category/([A-Za-z0-9\-]+)/?$ category.php?slug=$1 [L,QSA]
+    # /reporter/amit-kumar  (public reporter profile)
+    RewriteRule ^reporter/([A-Za-z0-9\-]+)/?$ profile.php?reporter=$1 [L,QSA]
+</IfModule>
+
+# Block access to sensitive locations even if someone guesses the path.
+<IfModule mod_authz_core.c>
+    <FilesMatch "^(config\.php|config\.sample\.php|\.gitignore|composer\.(json|lock))$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+RedirectMatch 403 ^/?(config|includes|database|scripts)/.*$
+
+# Basic security headers (tune in production).
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set X-XSS-Protection "0"
+</IfModule>
+
+Options -Indexes
+DirectoryIndex index.php

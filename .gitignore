@@ -1,0 +1,23 @@
+# KhuntaLocal — ignore local config and uploaded media
+/config/config.php
+
+# Uploaded media (keep the folders + protection files, ignore contents)
+/uploads/**
+!/uploads/
+!/uploads/.htaccess
+!/uploads/news/
+!/uploads/news/.gitkeep
+!/uploads/avatars/
+!/uploads/avatars/.gitkeep
+
+# PHP / tooling
+/vendor/
+composer.lock
+*.log
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
